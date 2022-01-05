@@ -16,6 +16,8 @@ import { waitDropFiles } from "https://code4sabae.github.io/js/waitDropFiles.js"
 import { downloadFile } from "https://code4sabae.github.io/js/downloadFile.js";
 import { readAsArrayBufferAsync } from "https://code4sabae.github.io/js/readAsArrayBufferAsync.js";
 import { ImageUtil } from "https://code4fukui.github.io/ImageUtil/ImageUtil.js";
+//import { ImageUtil } from "./ImageUtil.js";
+import { EXIF } from "https://taisukef.github.io/exif-js/EXIF.js";
 
 window.onload = async () => {
   for (;;) {
@@ -31,14 +33,17 @@ window.onload = async () => {
       try {
         const file = item.file;
         const bin = await readAsArrayBufferAsync(file);
+        const exif = EXIF.readFromBinaryFile(bin);
+        const colorSpace = exif.ColorSpace == "sRGB" || imgsrgb.checked ? "srgb" : "display-p3";
         const img = await ImageUtil.getImageFromArrayBuffer(bin);
-        const img2 = await ImageUtil.resizeImage(img, "image/jpeg", imgwidth.value);
-        const jpeg = await ImageUtil.getArrayBufferFromImage(img2, "image/jpeg", imgquality.value);
+        console.log(img, colorSpace);
+        const img2 = await ImageUtil.resizeImage(img, "image/jpeg", imgwidth.value, colorSpace);
+        const jpeg = await ImageUtil.getArrayBufferFromImage(img2, "image/jpeg", imgquality.value, colorSpace);
         const data = new Uint8Array(jpeg);
         files.push({ name: file.name, data });
       } catch (e) {
         console.log(e);
-        alert(`JPGファイル"${item.file.name}"の読み込みや変換に失敗しました。データが正常かご確認ください。`);
+        alert(`JPGファイル"${item.file.name}"の読み込みや変換に失敗しました。データが正常かご確認ください。\n${e}` );
         return;
       }
     }
@@ -62,6 +67,7 @@ window.onload = async () => {
   <div id="divmain" class="border px-5 mx-auto pt-3 pb-3"></div>
   最大幅高(px): <input type="text" id="imgwidth" class="m-3" value="1220">
   品質(0-1.0): <input type="text" id="imgquality" class="m-3" value="0.9">
+  強制sRGB: <input type="checkbox" id="imgsrgb" class="m-3">
 </div>
 
 <footer class="text-muted">
