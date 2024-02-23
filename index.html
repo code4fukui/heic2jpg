@@ -1,64 +1,105 @@
-<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="icon" href="data:">
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
 <!--
 <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
 -->
-<title>jpgbeauty</title>
-<meta property="og:title" content="jpgbeauty">
+<title>heic2jpg</title>
+<meta property="og:title" content="heic2jpg">
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:image" content="https://code4fukui.github.io/jpgbeauty/jpgbeauty.png">
-<meta property="og:image"  content="https://code4fukui.github.io/jpgbeauty/jpgbeauty.png">
+<meta name="twitter:image" content="https://code4fukui.github.io/heic2jpg/heic2jpg.png">
+<meta property="og:image"  content="https://code4fukui.github.io/heic2jpg/heic2jpg.png">
 <script type="module">
 import { downloadZip } from "https://code4sabae.github.io/js/downloadZip.js";
 import { waitDropFiles } from "https://code4sabae.github.io/js/waitDropFiles.js";
 import { downloadFile } from "https://code4sabae.github.io/js/downloadFile.js";
 import { readAsArrayBufferAsync } from "https://code4sabae.github.io/js/readAsArrayBufferAsync.js";
 import { ImageUtil } from "https://code4fukui.github.io/ImageUtil/ImageUtil.js";
-//import { ImageUtil } from "./ImageUtil.js";
-import { EXIF } from "https://taisukef.github.io/exif-js/EXIF.js";
+import { HEIC } from "https://code4fukui.github.io/heic-decode/HEIC.js";
 
-window.onload = async () => {
+const createImageFromImageData = async (img, colorSpace = "srgb") => {
+  const canvas = document.createElement("canvas");
+  const [iw, ih] = [img.orgwidth || img.width, img.orgheight || img.height];
+  canvas.width = iw;
+  canvas.height = ih;
+  const g = canvas.getContext("2d", { colorSpace });
+  g.fillStyle = "#ffffff";
+  g.fillRect(0, 0, iw, ih);
+  const imgd = new ImageData(img.data, img.width, img.height);
+  g.putImageData(imgd, 0, 0);
+  const dataurl = canvas.toDataURL("image/png");
+  const img2 = new Image();
+  img2.src = dataurl;
+  await ImageUtil.waitLoad(img2);
+  return img2;
+};
+
+const getArrayBufferFromImageData = async (img, mimeType, quality, colorSpace = "srgb") => { // default image/png
+  const canvas = document.createElement("canvas");
+  const [iw, ih] = [img.orgwidth || img.width, img.orgheight || img.height];
+  canvas.width = iw;
+  canvas.height = ih;
+  const g = canvas.getContext("2d", { colorSpace });
+  g.fillStyle = "#ffffff";
+  g.fillRect(0, 0, iw, ih);
+  const imgd = new ImageData(img.data, img.width, img.height);
+  g.putImageData(imgd, 0, 0);
+  const blob = await ImageUtil.getBlobFromCanvas(canvas, mimeType, quality);
+  const bin = await ImageUtil.getArrayBufferFromBlob(blob);
+  return bin;
+};
+
+onload = async () => {
   for (;;) {
-    divmain.innerHTML = "JPGファイルをドロップしてください";
+    divmain.innerHTML = "HEICファイルをドロップしてください";
     const items = await waitDropFiles(divmain);
     const files = [];
     for (const item of items) {
       // console.log(item.type); // ignore item.type in Windows
       const name = item.file.name;
-      const ispng = name.endsWith(".png");
-      if (!(name.endsWith(".jpg") || name.endsWith(".jpeg") || ispng)) {
-        alert("ファイル形式が違います。JPGファイルかPNGファイルをドロップしてください。")
+      console.log(name);
+      if (!name.toLowerCase().endsWith(".heic")) {
+        alert("ファイル形式が違います。HEICファイルをドロップしてください。")
         return;
       }
       try {
         const file = item.file;
-        const bin = await readAsArrayBufferAsync(file);
-        const exif = EXIF.readFromBinaryFile(bin);
-        const colorSpace = exif && exif.ColorSpace == "sRGB" || imgsrgb.checked ? "srgb" : "display-p3";
-        const img = await ImageUtil.getImageFromArrayBuffer(bin);
-        const maxw = imgwidth.value;
-        const sizeover = bin.byteLength > imgsize.value * 1024;
-        if (img.width > maxw || img.height > maxw || (ispng && sizeover)) {
-          const img2 = await ImageUtil.resizeImage(img, "image/jpeg", imgwidth.value, colorSpace);
-          const jpeg = await ImageUtil.getArrayBufferFromImage(img2, "image/jpeg", imgquality.value, colorSpace);
-          const data = new Uint8Array(jpeg);
-          const name2 = ispng ? name.substring(0, name.length - 3) + "jpg" : name;
-          files.push({ name: name2, data });
-        } else {
-          files.push({ name, data: bin });
+        const bin = new Uint8Array(await readAsArrayBufferAsync(file));
+        console.log(bin);
+        const images = await HEIC.decode(bin);
+        console.log(images);
+        const colorSpace = imgsrgb.checked ? "srgb" : "display-p3";
+
+        for (let i = 0; i < images.length; i++) {
+          const img = images[i];
+
+          const namef = name.substring(0, name.length - 5); // cut .HEIC
+          const name2 = images.length > 1 ? `${namef}-${i + 1}.jpg` : `${namef}.jpg`;
+
+          const maxw = imgwidth.value;
+          if (img.width > maxw || img.height > maxw) {
+            const img0 = await createImageFromImageData(img, colorSpace);
+            const img2 = await ImageUtil.resizeImage(img0, "image/jpeg", imgwidth.value, colorSpace);
+            const jpeg = await ImageUtil.getArrayBufferFromImage(img2, "image/jpeg", imgquality.value, colorSpace);
+            const data = new Uint8Array(jpeg);
+            files.push({ name: name2, data });
+          } else {
+            const jpeg = await getArrayBufferFromImageData(img, "image/jpeg", imgquality.value, colorSpace);
+            const data = new Uint8Array(jpeg);
+            files.push({ name: name2, data });
+          }
         }
       } catch (e) {
         console.log(e);
-        alert(`JPGファイル"${item.file.name}"の読み込みや変換に失敗しました。データが正常かご確認ください。\n${e}` );
+        alert(`HEICファイル"${item.file.name}"の読み込みや変換に失敗しました。データが正常かご確認ください。\n${e}`);
         return;
       }
     }
     if (files.length == 1) {
       downloadFile(files[0].name, files[0].data);
     } else {
-      downloadZip("jpgs.zip", files);
+      downloadZip("heics.zip", files);
     }
   }
 };
@@ -67,8 +108,8 @@ window.onload = async () => {
 <body>
   
 <div class="jumbotron">
-  <h1 class="display-4">jpgbeauty</h1>
-  <p class="lead">大きなJPGファイルをウェブ公開用に縮小します（まとめて変換対応、サーバーに送信されません）</p>
+  <h1 class="display-4">heic2jpg</h1>
+  <p class="lead">HEICファイルをJPGファイルに変換します（複数ファイルが含んだもの対応、サーバーに送信されません）</p>
 </div>
 
 <div class="mx-5">
@@ -76,14 +117,13 @@ window.onload = async () => {
   最大幅高(px): <input type="text" id="imgwidth" class="m-3" value="1220">
   品質(0-1.0): <input type="text" id="imgquality" class="m-3" value="0.9">
   強制sRGB: <input type="checkbox" id="imgsrgb" class="m-3">
-  最大サイズ(kbyte): <input type="text" id="imgsize" class="m-3" value="512">
 </div>
 
 <footer class="text-muted">
   <div class="container my-4 mx-0">
   <p>Design: <a href="https://getbootstrap.com/">Bootstrap</a> by <a href="https://twitter.com/mdo">@mdo</a></p>
-  <p>App: CC BY <a href="https://fukuno.jig.jp/3435">福野泰介の一日一創</a> by <a href="https://twitter.com/taisukef">@taisukef</a> (<a href=https://github.com/code4fukui/jpgbeauty/>src on GitHub</a>)</p>
-  <p>Related: <a href=https://code4sabae.github.io/csvbeauty/>csvbeauty</a>, <a href=https://code4fukui.github.io/txtbeauty/>txtbeauty</a></p>
+  <p>App: CC BY <a href="https://fukuno.jig.jp/4230">福野泰介の一日一創</a> by <a href="https://twitter.com/taisukef">@taisukef</a> (<a href=https://github.com/code4fukui/heic2jpg/>src on GitHub</a>)</p>
+  <p>Related: <a href=https://code4sabae.github.io/csvbeauty/>csvbeauty</a>, <a href=https://code4fukui.github.io/txtbeauty/>txtbeauty</a>, <a href=https://code4fukui.github.io/jpgbeauty/>jpgbeauty</a></p>
   </div>
 </footer>
 
